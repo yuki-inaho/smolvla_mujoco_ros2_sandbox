@@ -54,7 +54,7 @@ def check_torch() -> CheckResult:
 def main() -> int:
     checks = [
         CheckResult("platform", platform.system() == "Linux", platform.platform()),
-        CheckResult("python", sys.version_info[:2] == (3, 10), sys.version.replace("\n", " ")),
+        CheckResult("python", sys.version_info[:2] == (3, 12), sys.version.replace("\n", " ")),
         CheckResult("PIXI_PROJECT_ROOT", bool(os.environ.get("PIXI_PROJECT_ROOT")), os.environ.get("PIXI_PROJECT_ROOT", "not set")),
         CheckResult("MUJOCO_GL", bool(os.environ.get("MUJOCO_GL")), os.environ.get("MUJOCO_GL", "not set")),
         run_command(["ros2", "--help"]),

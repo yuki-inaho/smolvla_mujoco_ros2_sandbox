@@ -2,7 +2,7 @@
 
 ## Ubuntu 22.04 / ROS 2 Humble
 
-本リポジトリはROS 2 Humbleを前提にし、Python 3.10へ固定しています。pixi + RoboStackを使うため、システムの `/opt/ros/humble` を必須にしません。
+本リポジトリはROS 2 Humbleを前提にし、Python 3.12へ固定しています（focal-cu127 ブランチ）。RoboStack humble は cp39/cp311/cp312 のみ提供しており、lerobot[smolvla] も Python >=3.12 を必須とするため 3.12 を採用しています。pixi + RoboStackを使うため、システムの `/opt/ros/humble` を必須にしません。
 
 ## GPU
 
