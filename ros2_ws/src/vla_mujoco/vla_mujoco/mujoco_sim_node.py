@@ -35,6 +35,8 @@ class MujocoSimNode(Node):
         self.declare_parameter("joint_state_topic", "/joint_states")
         self.declare_parameter("arm_command_topic", "/arm_controller/joint_trajectory")
         self.declare_parameter("gripper_command_topic", "/gripper_controller/joint_trajectory")
+        # Optional initial joint positions (radians). Empty = use MuJoCo model defaults.
+        self.declare_parameter("initial_qpos", [0.0, 0.0, 0.0])
 
         self.model_path = str(self.get_parameter("model_path").value)
         self.sim_hz = float(self.get_parameter("sim_hz").value)
@@ -56,11 +58,17 @@ class MujocoSimNode(Node):
         self.data = None
         self.mujoco = None
         self.renderer = None
+        self._initial_qpos = list(self.get_parameter("initial_qpos").value)
         self._load_mujoco()
 
         self.current_positions = np.zeros(len(self.joint_names), dtype=np.float64)
         self.target_positions = np.zeros(len(self.joint_names), dtype=np.float64)
         if self.model is not None and self.data is not None:
+            # Apply user-specified initial joint positions before reading qpos.
+            if self._initial_qpos:
+                count_init = min(len(self._initial_qpos), self.model.nq)
+                self.data.qpos[:count_init] = self._initial_qpos[:count_init]
+                self.mujoco.mj_forward(self.model, self.data)
             count = min(len(self.joint_names), self.model.nq)
             self.current_positions[:count] = self.data.qpos[:count]
             self.target_positions[:count] = self.current_positions[:count]
