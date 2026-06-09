@@ -1,0 +1,28 @@
+# 解凍した一時ファイル（zip展開先）
+temp/
+
+# pixi 環境
+.pixi/
+
+# ROS 2 / colcon ビルド成果物
+build/
+install/
+log/
+
+# rosbag
+bags/
+
+# Python キャッシュ
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# モデル・データセット等の大容量成果物
+*.ckpt
+*.safetensors
+outputs/
+wandb/
+
+# その他
+.env
+.DS_Store

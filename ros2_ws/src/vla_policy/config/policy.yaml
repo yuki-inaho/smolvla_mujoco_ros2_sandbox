@@ -1,0 +1,41 @@
+policy_node:
+  ros__parameters:
+    backend: mock
+    policy_path: lerobot/smolvla_base
+    device: cuda
+    task_instruction: "Move the object to the target area."
+    control_hz: 5.0
+
+    joint_state_topic: /joint_states
+    arm_command_topic: /arm_controller/joint_trajectory
+    gripper_command_topic: /gripper_controller/joint_trajectory
+
+    joint_names:
+      - joint1
+      - joint2
+      - gripper
+    arm_joint_names:
+      - joint1
+      - joint2
+    gripper_joint_names:
+      - gripper
+
+    camera_names:
+      - top
+      - side
+      - wrist
+    camera_topics:
+      - /top_camera/image_raw
+      - /side_camera/image_raw
+      - /wrist_camera/image_raw
+    camera_keys:
+      - observation.images.top
+      - observation.images.side
+      - observation.images.wrist
+
+    state_key: observation.state
+    task_key: task
+    action_mode: delta_joint
+    action_scale: 0.05
+    max_delta: 0.05
+    command_duration_sec: 0.2

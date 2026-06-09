@@ -1,0 +1,27 @@
+mujoco_sim_node:
+  ros__parameters:
+    model_path: ""
+    sim_hz: 200.0
+    publish_hz: 10.0
+    use_renderer: false
+    image_width: 320
+    image_height: 240
+    joint_names:
+      - joint1
+      - joint2
+      - gripper
+    camera_names:
+      - top
+      - side
+      - wrist
+    camera_topics:
+      - /top_camera/image_raw
+      - /side_camera/image_raw
+      - /wrist_camera/image_raw
+    camera_info_topics:
+      - /top_camera/camera_info
+      - /side_camera/camera_info
+      - /wrist_camera/camera_info
+    joint_state_topic: /joint_states
+    arm_command_topic: /arm_controller/joint_trajectory
+    gripper_command_topic: /gripper_controller/joint_trajectory
