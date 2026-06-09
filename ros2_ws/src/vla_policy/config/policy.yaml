@@ -28,14 +28,17 @@ policy_node:
       - /top_camera/image_raw
       - /side_camera/image_raw
       - /wrist_camera/image_raw
+    # smolvla_base was trained with camera keys camera1/2/3.
+    # Map our 3 cameras (top/side/wrist) to these keys in order.
     camera_keys:
-      - observation.images.top
-      - observation.images.side
-      - observation.images.wrist
+      - observation.images.camera1
+      - observation.images.camera2
+      - observation.images.camera3
 
     state_key: observation.state
     task_key: task
     action_mode: delta_joint
-    action_scale: 0.05
-    max_delta: 0.05
+    # scale=0.08 / max_delta=0.08: arm traverses range slowly (anti-saturation).
+    action_scale: 0.08
+    max_delta: 0.08
     command_duration_sec: 0.2

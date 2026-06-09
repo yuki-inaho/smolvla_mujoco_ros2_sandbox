@@ -37,11 +37,25 @@ class MockPolicyBackend(PolicyBackend):
 
 
 class SmolVLABackend(PolicyBackend):
-    """Thin LeRobot/SmolVLA adapter.
+    """Thin LeRobot/SmolVLA adapter for lerobot 0.5.1.
 
-    Important: SmolVLA checkpoints are tied to feature names and dimensions.
-    Configure image_keys, state_key, task_key, joint ordering, and action
-    post-processing to match the dataset/checkpoint that you fine-tuned.
+    API notes (verified against lerobot 0.5.1 source):
+
+    - SmolVLAPolicy.from_pretrained(path) loads the model.
+    - make_pre_post_processors(config, pretrained_path) returns
+      (preprocessor, postprocessor) pipelines.
+    - preprocessor takes a raw obs dict with un-batched tensors and a "task" string;
+      it adds the batch dimension, tokenises the task string, normalises, and moves
+      to device.
+    - policy.select_action(batch) returns a Tensor of shape (1, action_dim) on GPU.
+    - postprocessor takes that Tensor cast to PolicyAction (a Tensor subclass via
+      .as_subclass()) and returns an unnormalised Tensor on CPU.
+
+    smolvla_base input contract (from config.json):
+      - observation.state  shape (6,) float32 on CPU before preprocessing
+      - observation.images.camera1/2/3  shape (3, H, W) float32 [0,1] on CPU
+      - "task"  str (task instruction, preprocessor appends \\n if missing)
+      action output: shape (1, 6) float32 → trimmed to action_dim for ROS
     """
 
     def __init__(
@@ -54,7 +68,6 @@ class SmolVLABackend(PolicyBackend):
         task_key: str,
     ) -> None:
         self.policy_path = policy_path
-        self.device_name = device
         self.action_dim = action_dim
         self.image_keys = image_keys
         self.state_key = state_key
@@ -62,8 +75,9 @@ class SmolVLABackend(PolicyBackend):
 
         try:
             import torch
-            from lerobot.policies.factory import make_pre_post_processors
             from lerobot.policies.smolvla.modeling_smolvla import SmolVLAPolicy
+            from lerobot.policies.factory import make_pre_post_processors
+            from lerobot.processor import PolicyAction
         except Exception as exc:  # noqa: BLE001
             raise RuntimeError(
                 "Failed to import LeRobot SmolVLA dependencies. "
@@ -71,66 +85,95 @@ class SmolVLABackend(PolicyBackend):
             ) from exc
 
         self.torch = torch
+        self.PolicyAction = PolicyAction
         self.device = torch.device(device if device == "cpu" or torch.cuda.is_available() else "cpu")
-        self.policy = SmolVLAPolicy.from_pretrained(policy_path).to(self.device).eval()
 
-        self.preprocess = None
-        self.postprocess = None
-        try:
-            self.preprocess, self.postprocess = make_pre_post_processors(
-                self.policy.config,
-                policy_path,
-                preprocessor_overrides={"device_processor": {"device": str(self.device)}},
-            )
-        except Exception:
-            # Older/newer LeRobot versions may alter processor APIs. The backend
-            # still attempts direct policy.select_action below.
-            self.preprocess = None
-            self.postprocess = None
+        self.policy = SmolVLAPolicy.from_pretrained(policy_path)
+        self.policy = self.policy.to(self.device).eval()
+        self.policy.reset()
+
+        # Build pre/post processors from pretrained checkpoint.
+        # make_pre_post_processors(config, pretrained_path) is the correct
+        # lerobot 0.5.1 signature — no extra keyword overrides needed.
+        self.preprocess, self.postprocess = make_pre_post_processors(
+            self.policy.config,
+            pretrained_path=policy_path,
+        )
 
     def predict(self, frame: ObservationFrame) -> np.ndarray:
-        candidate = self._make_lerobot_frame(frame)
+        obs = self._make_obs_dict(frame)
+
+        # Debug observation stats on first call only (cleared after logging).
+        if not getattr(self, "_obs_logged", False):
+            self._obs_logged = True
+            import sys
+            state_t = obs[self.state_key]
+            print(
+                f"[SmolVLABackend] OBS CHECK: state shape={state_t.shape} "
+                f"min={state_t.min():.4f} max={state_t.max():.4f}",
+                file=sys.stderr, flush=True,
+            )
+            for k, v in obs.items():
+                if hasattr(v, "shape"):
+                    print(
+                        f"[SmolVLABackend] OBS CHECK: {k} shape={v.shape} "
+                        f"mean={v.float().mean():.4f} std={v.float().std():.4f}",
+                        file=sys.stderr, flush=True,
+                    )
+
         with self.torch.inference_mode():
-            model_input: Dict[str, Any] = self.preprocess(candidate) if self.preprocess is not None else candidate
-            try:
-                output = self.policy.select_action(model_input)
-            except Exception:
-                # Some examples call select_action on the unprocessed frame.
-                output = self.policy.select_action(candidate)
-            if self.postprocess is not None:
-                try:
-                    output = self.postprocess(output)
-                except Exception:
-                    pass
+            # Preprocessor: adds batch dim, tokenises task, normalises, moves to device
+            batch = self.preprocess(obs)
+            # select_action: returns Tensor (1, action_dim) on GPU
+            action_tensor = self.policy.select_action(batch)
+            # Postprocessor: unnormalise, move to CPU
+            # PolicyAction is a torch.Tensor subclass; cast via as_subclass()
+            policy_action = action_tensor.as_subclass(self.PolicyAction)
+            unnorm_action = self.postprocess(policy_action)
 
-        return self._to_action_vector(output)
+        action_np = unnorm_action.cpu().numpy().reshape(-1)
+        trimmed = self._trim_to_action_dim(action_np)
 
-    def _make_lerobot_frame(self, frame: ObservationFrame) -> Dict[str, Any]:
-        result: Dict[str, Any] = {
-            self.state_key: self.torch.as_tensor(frame.joint_positions, dtype=self.torch.float32, device=self.device),
+        # Log action on first call.
+        if not getattr(self, "_action_logged", False):
+            self._action_logged = True
+            import sys
+            print(
+                f"[SmolVLABackend] ACTION: raw={action_np[:6].tolist()} "
+                f"trimmed={trimmed.tolist()}",
+                file=sys.stderr, flush=True,
+            )
+
+        return trimmed
+
+    def _make_obs_dict(self, frame: ObservationFrame) -> Dict[str, Any]:
+        """Build un-batched obs dict that the preprocessor expects.
+
+        The preprocessor's AddBatchDimensionProcessorStep will add the batch dim,
+        so tensors here are (C, H, W) for images and (state_dim,) for state.
+        """
+        obs: Dict[str, Any] = {
+            self.state_key: self.torch.as_tensor(
+                frame.joint_positions, dtype=self.torch.float32
+            ),
             self.task_key: frame.task_instruction,
         }
-
         for camera_name, image_key in zip(frame.images.keys(), self.image_keys):
-            image = frame.images[camera_name]
-            tensor = self.torch.as_tensor(image, dtype=self.torch.float32, device=self.device).permute(2, 0, 1) / 255.0
-            result[image_key] = tensor
-        return result
+            image = frame.images[camera_name]  # HWC uint8 numpy
+            # Convert HWC uint8 → CHW float32 [0, 1]
+            tensor = (
+                self.torch.as_tensor(image, dtype=self.torch.float32)
+                .permute(2, 0, 1)
+                .div(255.0)
+            )
+            obs[image_key] = tensor
+        return obs
 
-    def _to_action_vector(self, output: Any) -> np.ndarray:
-        if isinstance(output, dict):
-            for key in ("action", "actions", "pred_action"):
-                if key in output:
-                    output = output[key]
-                    break
-        if hasattr(output, "detach"):
-            output = output.detach().cpu().numpy()
-        array = np.asarray(output, dtype=np.float32)
-        while array.ndim > 1:
-            array = array[0]
-        if array.size < self.action_dim:
-            array = np.pad(array, (0, self.action_dim - array.size))
-        return array[: self.action_dim]
+    def _trim_to_action_dim(self, action: np.ndarray) -> np.ndarray:
+        action = np.asarray(action, dtype=np.float32)
+        if action.size < self.action_dim:
+            action = np.pad(action, (0, self.action_dim - action.size))
+        return action[: self.action_dim]
 
 
 def create_backend(

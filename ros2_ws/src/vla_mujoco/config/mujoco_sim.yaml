@@ -3,7 +3,7 @@ mujoco_sim_node:
     model_path: ""
     sim_hz: 200.0
     publish_hz: 10.0
-    use_renderer: false
+    use_renderer: true
     image_width: 320
     image_height: 240
     joint_names:

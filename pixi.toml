@@ -76,3 +76,9 @@ mujoco = ">=3.3.0,<4"
 # Use lerobot 0.5.1: requires opencv-python-headless>=4.9.0,<4.14.0 (conda pins 4.13.0 OK),
 # and packaging<26.0 (pinned in conda deps above).
 lerobot = { version = ">=0.5.1,<0.6.0", extras = ["smolvla"] }
+# lerobot requires torch>=2.7,<2.11 and torchvision>=0.22,<0.26.
+# torch 2.10.0+cu128 (nightly/dev) removed torch._dynamo.utils.NP_SUPPORTED_MODULES
+# which torchvision 0.25.0 depends on — pin torch to a stable 2.7.x build
+# so the solver picks torchvision 0.22.x which is compatible.
+torch = ">=2.7.0,<2.8.0"
+torchvision = ">=0.22.0,<0.23.0"
