@@ -6,6 +6,12 @@ authors = ["Your Team <robotics@example.com>"]
 channels = ["robostack-humble", "conda-forge"]
 platforms = ["linux-64"]
 
+# focal-cu127: target host is Ubuntu 20.04 (Focal) + NVIDIA driver 565 (CUDA 12.7).
+# Declaring the CUDA version lets the solver pick GPU-enabled builds and fails
+# loudly if a package needs a newer toolkit than this driver supports.
+[system-requirements]
+cuda = "12.7"
+
 [activation]
 scripts = ["scripts/activate_ros_overlay.sh"]
 

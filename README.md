@@ -10,6 +10,7 @@ Ubuntu 上で、`pixi` を依存関係の入口にし、ROS 2 Humble、MuJoCo、
 ## 前提環境
 
 - Ubuntu 22.04 LTS または Ubuntu 24.04 LTS
+- Ubuntu 20.04 LTS (Focal) も `focal-cu127` ブランチで対応（ROS 2 は RoboStack 経由で pixi 環境内に閉じ込めるため、system ROS には非依存）。CUDA 12.7 環境向けの詳細は [`docs/FOCAL_CU127.md`](docs/FOCAL_CU127.md) を参照。
 - `linux-64` 環境
 - pixi
 - NVIDIA GPU は推奨ですが、モック方策とMuJoCoのヘッドレス疎通はCPUでも確認可能です。
