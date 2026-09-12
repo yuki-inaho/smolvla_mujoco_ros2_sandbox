@@ -1,0 +1,1 @@
+doc-lint: 表構造/破損行/動画バイト/pytest実行によるpassed突合/行数の機械検証。update_doc_facts: GENERATED:facts ブロックを生成し --check で陳腐化検出。doc-lint が作業記録の破損行を実検出した実績あり。
