@@ -1,0 +1,1 @@
+artifacts(6.8MB・再生成可能) / .playwright-cli / .serena / .pytest_cache を除外。ルート直下 assets/scenes はパッケージ内と重複する生成物のため除外。コミット前に秘密情報スキャン実施（api_key/token/password 等: 該当なし）。
