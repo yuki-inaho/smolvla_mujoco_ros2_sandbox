@@ -26,3 +26,14 @@ wandb/
 # その他
 .env
 .DS_Store
+
+# 生成物（再生成可能: pixi run render-video / viewer-html / webcheck）
+artifacts/
+
+# ツール用キャッシュ・ログ（.playwright/cli.config.json は共有設定としてコミットする）
+.playwright-cli/
+.serena/
+.pytest_cache/
+
+# ルート直下の重複生成シーン（正: ros2_ws/src/tomato_harvest_sim/assets/scenes）
+/assets/scenes/
