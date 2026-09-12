@@ -1,0 +1,1 @@
+contact_poc: mocap target を接触有効な自由物体へ変換し把握→把持→持上げを mj_step 実測（slip 1.23mm・保持成立、penetration 0）。export_viewer_html: 依存ゼロ単体HTML（30秒動画埋め込み・位相機械をJS移植）。playwright-cli で window.__harvestSim.ready=true を確認。
