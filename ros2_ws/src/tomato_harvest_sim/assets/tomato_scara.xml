@@ -1,0 +1,149 @@
+<mujoco model="tomato_scara">
+  <!--
+    Real-robot-faithful approximation of tomato_arm (tomato_robo/tomato_ros/arm_description).
+
+    Provenance:
+      - link lengths / offsets: urdf/tomato_arm.xacro, urdf/eef.xacro
+        (lift_origin_h=0.960, x_lift_stage_to_shoulder=0.195, upperarm=0.285,
+         forearm=0.345, wrist->eef_footprint=(0.070 down, 0.050 hand dir),
+         hand body=0.090x0.090x0.260, tip=0.260, grasp=-0.100 from tip)
+      - joint limits: config_snapshots/robot_snapshot_tmt4-02.toml
+        (lift 0..0.9725 m @0.5 m/s, yaw +/-2.36, elbow +/-3.05, wrist +/-6.1 rad)
+      - gripper width: planning_params grip_width_closed=0.0057, semiopen=0.09
+      - home pose: arm_positions.toml home=[25,0,-25] deg, lift 0.30 m
+      - "rail" is a sim-only vehicle abstraction (the real machine drives on wheels);
+        it stays at 0 during arm-fidelity renders.
+
+    Grasp-point check: shoulder z = 0.960 + lift, hand drop 0.070 ->
+    grasp z = 0.890 + lift, matching the recorded eef_z_m exactly.
+  -->
+  <compiler angle="radian" autolimits="true"/>
+  <option timestep="0.002" gravity="0 0 -9.81" integrator="implicitfast"/>
+  <visual>
+    <global offwidth="640" offheight="480"/>
+  </visual>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.35 0.5 0.65" rgb2="0.05 0.05 0.08" width="512" height="512"/>
+    <material name="mat_floor" rgba="0.75 0.75 0.72 1"/>
+    <material name="mat_link" rgba="0.25 0.45 0.85 1"/>
+    <material name="mat_column" rgba="0.35 0.35 0.4 1"/>
+    <material name="mat_rail" rgba="0.2 0.2 0.22 1"/>
+    <material name="mat_hand" rgba="0.25 0.25 0.28 1"/>
+    <material name="mat_finger" rgba="0.85 0.3 0.15 1"/>
+    <material name="mat_fruit" rgba="0.9 0.15 0.1 1"/>
+    <material name="mat_belt" rgba="0.08 0.08 0.09 1"/>
+    <material name="mat_wheel" rgba="0.12 0.12 0.14 1"/>
+    <material name="mat_camera" rgba="0.15 0.15 0.18 1"/>
+    <material name="mat_railbeam" rgba="0.45 0.45 0.48 1"/>
+  </asset>
+
+  <worldbody>
+    <light pos="1.0 -0.5 2.5" dir="-0.3 0.15 -1" diffuse="0.9 0.9 0.9"/>
+    <geom name="floor" type="plane" size="3 3 0.02" material="mat_floor"/>
+
+    <!--
+      Vehicle (tmt4). Documented parts:
+        - differential drive: wheel_r/wheel_l (EPOS4 ID1/2, EC60flat 150W 48V)
+        - wheel radii: rail 0.050 m / ground 0.125 m (vehicle_driver.py)
+        - speeds: spd_auto_base 0.13 / spd_auto_max 0.50 m/s (vehicle_parameters.toml)
+        - camera mount: arm_lift_stage -> camera_base [0.500, 0, 0.191] + cal
+          (config/tmt4-02/camera_tf_broadcaster.py), camera motor +/-90 deg
+          (camera_motor.toml), Vzense NYX650 (docs/tmt4-hardware.md)
+      Chassis / caster / rail-beam dimensions are INFERRED (no drawing in repo)
+      and only visual: they carry no collisions and no dynamics role.
+    -->
+    <!--
+      Two rails (gauge INFERRED: wheels at y=+/-0.13) so the wheels touch.
+      rail_beam(...) の幅・ゲージは推定（図面なし）。 target_fruit は
+      pick_trigger.parquet の target（source=recognition_artifact）を mocap で固定。
+    -->
+    <geom name="rail_beam_l" type="box" size="1.5 0.02 0.02" pos="0 0.13 -0.02" material="mat_railbeam"/>
+    <geom name="rail_beam_r" type="box" size="1.5 0.02 0.02" pos="0 -0.13 -0.02" material="mat_railbeam"/>
+
+    <body name="rail_carriage" pos="0 0 0">
+      <!-- No rail joint: the real machine drives on wheels (out of scope). -->
+
+      <!-- INFERRED chassis envelope (documented parts fitted inside). -->
+      <geom name="chassis" type="box" size="0.25 0.16 0.11" pos="0 0 0.16" material="mat_rail"/>
+
+      <!-- 2 driven rail wheels (r=0.050, documented) + 2 INFERRED guide rollers. -->
+      <geom name="wheel_front_l" type="cylinder" size="0.05 0.02" pos="0.16 0.13 0.05" euler="1.5708 0 0" material="mat_wheel"/>
+      <geom name="wheel_front_r" type="cylinder" size="0.05 0.02" pos="0.16 -0.13 0.05" euler="1.5708 0 0" material="mat_wheel"/>
+      <geom name="wheel_rear_l" type="cylinder" size="0.05 0.02" pos="-0.16 0.13 0.05" euler="1.5708 0 0" material="mat_wheel"/>
+      <geom name="wheel_rear_r" type="cylinder" size="0.05 0.02" pos="-0.16 -0.13 0.05" euler="1.5708 0 0" material="mat_wheel"/>
+      <geom name="caster_front" type="sphere" size="0.03" pos="0.27 0 0.03" material="mat_wheel"/>
+      <geom name="caster_rear" type="sphere" size="0.03" pos="-0.27 0 0.03" material="mat_wheel"/>
+
+      <!-- Lift stage origin at the vehicle center (robot_snapshot: world -> arm_lift_origin
+           translation (0, 0, 0.960)); the shoulder yaw origin is +0.195 m along x. -->
+      <body name="lift_column" pos="0 0 0.96">
+        <joint name="lift" type="slide" axis="0 0 1" range="0 0.9725" damping="2.0" armature="0.1"/>
+        <!-- lift column visual: INFERRED radius/height (no drawing). -->
+        <geom name="lift_geom" type="cylinder" size="0.035 0.05" pos="0 0 0" material="mat_column"/>
+
+        <!-- Camera chain reproduced literally from camera_tf_broadcaster.py:
+             arm_lift_stage -> arm_shoulder_footprint [0,0,0] rpy [0,-90,0],
+             then camera_base = [0.500, 0, 0.191] + calibration (cal.z=+0.02
+             for tmt4-02) -> z = 0.211, with camera_motor +/-90 deg yaw. -->
+        <body name="shoulder_footprint" euler="0 -1.5708 0">
+          <body name="camera_mount" pos="0.5 0 0.211">
+            <joint name="camera_yaw" type="hinge" axis="0 0 1" range="-1.5708 1.5708" damping="0.2"/>
+            <!-- camera body/lens sizes are INFERRED (NYX650 enclosure not in repo). -->
+            <geom name="camera_body" type="box" size="0.033 0.033 0.02" pos="0.02 0 0" material="mat_camera"/>
+            <geom name="camera_lens" type="cylinder" size="0.012 0.015" pos="0.06 0 0" euler="0 1.5708 0" material="mat_camera"/>
+          </body>
+        </body>
+
+        <body name="shoulder" pos="0.195 0 0">
+          <joint name="shoulder_yaw" type="hinge" axis="0 0 -1" range="-2.36 2.36" damping="0.5"/>
+          <geom name="link1" type="capsule" fromto="0 0 0 0.285 0 0" size="0.028" material="mat_link"/>
+
+          <body name="elbow" pos="0.285 0 0">
+            <joint name="elbow_yaw" type="hinge" axis="0 0 -1" range="-3.05 3.05" damping="0.5"/>
+            <geom name="link2" type="capsule" fromto="0 0 0 -0.345 0 0" size="0.024" material="mat_link"/>
+
+            <body name="wrist" pos="-0.345 0 0">
+              <joint name="wrist_yaw" type="hinge" axis="0 0 -1" range="-6.1 6.1" damping="0.5"/>
+              <geom name="link3" type="capsule" fromto="0 0 0 0.05 0 0" size="0.02" material="mat_link"/>  <!-- link radii are INFERRED visuals -->
+
+              <!-- Hand: eef_footprint at (+0.050 along hand, -0.070 vertical) from wrist.
+                   Body 0.260 long x 0.090 x 0.090, tip at +0.310 from wrist,
+                   grasp point (eef_site) at +0.210 along / -0.070 down (tip -0.100). -->
+              <body name="hand" pos="0.05 0 -0.07">
+                <geom name="hand_body" type="box" size="0.13 0.045 0.045" pos="0.13 0 0" material="mat_hand"/>
+                <!-- belt_l / belt_r (EPOS4 ID9/10, DJI M2006; tmt4-hardware.md):
+                     hand side belts. Positions/radii are INFERRED (no drawing). -->
+                <geom name="belt_l" type="box" size="0.115 0.004 0.03" pos="0.13 0.046 0" material="mat_belt"/>
+                <geom name="belt_r" type="box" size="0.115 0.004 0.03" pos="0.13 -0.046 0" material="mat_belt"/>
+                <!-- Gripper: twin belts (belt_l/r) move symmetrically between the surface
+                      gap 0.090 m (semiopen) and 0.0057 m (closed). Modelled as an
+                      equivalent single moving jaw with stroke 0.0843 m (= gap change);
+                      per-belt travel is 0.04215 m. -->
+                <geom name="finger_fixed" type="box" size="0.015 0.003 0.02" pos="0.285 0.048 0" material="mat_finger"/>
+                <body name="jaw" pos="0.285 -0.048 0">
+                  <joint name="gripper" type="slide" axis="0 1 0" range="0 0.0843" damping="0.2"/>
+                  <geom name="finger_moving" type="box" size="0.015 0.003 0.02" pos="0 0 0" material="mat_finger"/>
+                </body>
+                <site name="eef_site" pos="0.16 0 0" size="0.006" rgba="0.1 1 0.1 1"/>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+    </body>
+
+    <!-- Harvest target (mocap so the sim node can pin it to the recorded fruit). -->
+    <body name="target_fruit" mocap="true" pos="0.3534742649644613 0.5227577420258906 1.275849107842993">
+      <geom name="target_geom" type="sphere" size="0.03" material="mat_fruit" contype="0" conaffinity="0"/>
+    </body>
+  </worldbody>
+
+  <actuator>
+    <position name="lift_motor" joint="lift" kp="400" ctrlrange="0 0.9725"/>
+    <position name="shoulder_motor" joint="shoulder_yaw" kp="80" ctrlrange="-2.36 2.36"/>
+    <position name="elbow_motor" joint="elbow_yaw" kp="80" ctrlrange="-3.05 3.05"/>
+    <position name="wrist_motor" joint="wrist_yaw" kp="60" ctrlrange="-6.1 6.1"/>
+    <position name="gripper_motor" joint="gripper" kp="40" ctrlrange="0 0.0843"/>
+  </actuator>
+</mujoco>
