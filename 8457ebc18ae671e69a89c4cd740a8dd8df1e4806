@@ -1,0 +1,1 @@
+render: lockfile+失効temp掃除+ffmpeg -xerror 全デコード+nb_frames/解像度一致→原子的 rename。webcheck: playwright-cli で viewer 検証。doctor_sim: 依存検査。実測: 900f/30.000s/1,079,990B、decode rc=0・stderr 0、ロック時 rc=1 fail-fast。
