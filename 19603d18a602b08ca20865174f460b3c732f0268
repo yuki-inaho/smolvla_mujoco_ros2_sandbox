@@ -1,0 +1,1 @@
+連続性契約(1kHz+境界±ε+duration≤0)・joint parity(robot_snapshot j_arm_* 束縛)・レンダラ lock+全デコード検証・来歴 verified_source ゲート・台形 infeasible 契約・解析vs数値ヤコビアン・接触PoC契約・HTMLビューア契約。pixi run verify: 80 passed。
