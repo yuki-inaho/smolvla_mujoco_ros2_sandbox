@@ -10,8 +10,31 @@ platforms = ["linux-64"]
 scripts = ["scripts/activate_ros_overlay.sh"]
 
 [tasks]
-doctor = { cmd = "python scripts/doctor.py" }
+# ===== 品質ゲート（CI 相当） =====
+test-sim = { cmd = "python -m pytest ros2_ws/src/tomato_harvest_sim/tests -q" }
+ruff-check = { cmd = "python -m ruff check ros2_ws/src/tomato_harvest_sim scripts/*.py" }
+doc-lint = { cmd = "python scripts/doc_lint.py" }
+doc-facts = { cmd = "python scripts/update_doc_facts.py" }
+doc-facts-check = { cmd = "python scripts/update_doc_facts.py --check" }
+verify = { depends-on = ["test-sim", "ruff-check", "doc-lint", "doc-facts-check"] }
+
+# ===== 収穫シミュレーション =====
 build = { cmd = "colcon build --symlink-install --event-handlers console_direct+", cwd = "ros2_ws" }
+build-scene = { cmd = "ros2 run tomato_harvest_sim scene_builder --bundle-dir /home/kasm-user/Desktop/data/2026-08-04_tmt4-02 --scene-id 7a7e56ff__camera_l__2026-08-04_08-19-43-646 --out ros2_ws/src/tomato_harvest_sim/assets/scenes", depends-on = ["build"] }
+harvest-run = { cmd = "ros2 launch tomato_harvest_sim harvest_sim.launch.py", depends-on = ["build"] }
+viewer = { cmd = "ros2 launch tomato_harvest_sim viewer.launch.py", depends-on = ["build"] }
+webcheck = { cmd = "python scripts/webcheck.py" }
+render-video = { cmd = "env DISPLAY=:1.0 MUJOCO_GL=glfw python scripts/render_harvest_video.py --duration 30 --dunk-every 3 --azimuth 110 --elevation -15 --distance 2.3 --lookat 0.45 0.45 1.05 --out artifacts/video/harvest_realtime_30s_faithful.mp4" }
+viewer-html = { cmd = "python scripts/export_viewer_html.py" }
+viewer-html-open = { cmd = "xdg-open artifacts/viewer/harvest_sim.html 2>/dev/null || echo 'open manually: artifacts/viewer/harvest_sim.html'", depends-on = ["viewer-html"] }
+contact-poc = { cmd = "python scripts/contact_poc.py" }
+
+# ===== 環境チェック =====
+doctor = { cmd = "python scripts/doctor.py" }
+# 本作業で必要な依存のみを検査（lerobot は非ゴールのため対象外）
+doctor-sim = { cmd = "python scripts/doctor_sim.py" }
+
+# ===== sandbox 共通（colcon / VLA） =====
 clean = { cmd = "rm -rf build install log", cwd = "ros2_ws" }
 test = { cmd = "colcon test --event-handlers console_direct+ && colcon test-result --verbose", cwd = "ros2_ws", depends-on = ["build"] }
 sim = { cmd = "ros2 launch vla_mujoco sim.launch.py", cwd = "ros2_ws", depends-on = ["build"] }
@@ -19,13 +42,18 @@ policy-mock = { cmd = "ros2 launch vla_policy policy.launch.py backend:=mock", c
 policy-smolvla = { cmd = "ros2 launch vla_policy policy.launch.py backend:=smolvla", cwd = "ros2_ws", depends-on = ["build"] }
 all-mock = { cmd = "bash scripts/launch_all.sh mock", depends-on = ["build"] }
 all-smolvla = { cmd = "bash scripts/launch_all.sh smolvla", depends-on = ["build"] }
+
+# ===== ユーティリティ =====
 list-topics = { cmd = "ros2 topic list" }
 echo-joints = { cmd = "ros2 topic echo /joint_states --once" }
 record-bag = { cmd = "mkdir -p bags && ros2 bag record /joint_states /top_camera/image_raw /side_camera/image_raw /wrist_camera/image_raw /arm_controller/joint_trajectory /gripper_controller/joint_trajectory -o bags/session", cwd = "ros2_ws" }
 train-smolvla = { cmd = "bash scripts/train_smolvla.sh" }
 
 [dependencies]
-python = ">=3.10,<3.11"
+# NOTE: robostack-humble の現行ビルドは Python 3.10 向けが提供されていない
+# （ros-humble-joint-state-broadcaster / rosbag2-storage-default-plugins に py310 ビルドが無い、実測 2026-09-11）。
+# Python 3.11 ビルドが提供されているため 3.11 を採用する。
+python = ">=3.11,<3.12"
 colcon-common-extensions = "*"
 setuptools = "<=58.2.0"
 
@@ -51,9 +79,16 @@ opencv = "*"
 ffmpeg = "*"
 pyyaml = "*"
 rich = "*"
-pytest = "*"
+# pytest>=8.4 は hook API 変更で ROS 2 の launch_testing / ament pytest プラグインと非互換（2026-09-11 実測）。
+pytest = ">=7.4,<8.4"
 ruff = "*"
+# parquet 成果物（grasp/runs, grasp/recordings）の読出しに使用
+duckdb = "*"
 
 [pypi-dependencies]
 mujoco = ">=3.3.0,<4"
-lerobot = { version = ">=0.5.0,<0.6.0", extras = ["smolvla"] }
+# lerobot[smolvla] は非採用（実測 2026-09-11）:
+#   - lerobot[smolvla] 0.5.x は Python>=3.12 を要求する。
+#   - Python 3.12 では conda 側の pin `packaging==26.3` と lerobot の `packaging>=24.2,<26.0` が衝突し solve 不能。
+#   - SmolVLA の推論/fine-tune は本作業の非ゴール。復活させる場合は別環境（py312 + packaging 上書き）で行う。
+# lerobot = { version = ">=0.5.0,<0.6.0", extras = ["smolvla"] }
