@@ -1,0 +1,1 @@
+品質ゲート verify = test-sim + ruff-check + doc-lint + doc-facts-check。再生成系タスク render-video / viewer-html / viewer-html-open / contact-poc を追加。コミット時点で pixi run verify: 80 passed / ruff All checks passed / doc lint passed / doc facts current。
